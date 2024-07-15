@@ -1,5 +1,6 @@
 *__pycache__*
 tmp/
+logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -132,4 +133,7 @@ dmypy.json
 .pyre/
 
 # DS_Store files
-**/.DS_Store 
+**/.DS_Store
+
+# Wheel build
+*.whl
