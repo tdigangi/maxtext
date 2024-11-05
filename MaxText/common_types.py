@@ -36,6 +36,7 @@ AxisIdxes = tuple[int, ...]
 
 BATCH = "activation_batch"
 LENGTH = "activation_length"
+KV_LENGTH = "activation_kv_length"
 EMBED = "activation_embed"
 HEAD = "activation_heads"
 KV_BATCH = "activation_kv_batch"
