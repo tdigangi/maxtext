@@ -17,7 +17,7 @@
 import enum
 import functools
 import math
-from typing import Any, Optional
+from typing import Any, Optional, NamedTuple
 
 from flax import linen as nn
 import jax
@@ -26,6 +26,7 @@ from jax.ad_checkpoint import checkpoint_name
 from jax.experimental import shard_map
 from jax.experimental.pallas.ops.tpu.splash_attention import splash_attention_kernel
 from jax.experimental.pallas.ops.tpu.splash_attention import splash_attention_mask
+from jax.experimental.pallas.ops.tpu.splash_attention import SegmentIds
 import jax.numpy as jnp
 import common_types
 from kernels.ragged_attention import ragged_gqa
@@ -293,17 +294,21 @@ class AttentionOp(nn.Module):
     query = jnp.transpose(query, axes=(0, 2, 1, 3))
     key = jnp.transpose(key, axes=(0, 2, 1, 3))
     value = jnp.transpose(value, axes=(0, 2, 1, 3))
-
+    segment_axis_names_q = None
+    segment_axis_names_kv = None
     if decoder_segment_ids is not None:
-      decoder_segment_ids = splash_attention_kernel.SegmentIds(decoder_segment_ids)
+      # decoder_segment_ids = splash_attention_kernel.SegmentIds(decoder_segment_ids, decoder_segment_ids)
+      segment_axis_names_q = nn.logical_to_mesh_axes((BATCH, "activation_length_q"))
+      segment_axis_names_kv = nn.logical_to_mesh_axes((BATCH, "activation_length_kv"))
+      # segment_axis_names = [splash_attention_kernel.SegmentIds(segment_axis_names_q, segment_axis_names_kv)]
+      # segment_axis_names = [NamedTuple(segment_axis_names_q, segment_axis_names_kv)]
     axis_names_q = nn.logical_to_mesh_axes(self.flash_axis_names_q)
     axis_names_kv = nn.logical_to_mesh_axes(self.flash_axis_names_kv)
     max_logging.log(f'axis_names_q: {axis_names_q}')
     max_logging.log(f'axis_names_kv: {axis_names_kv}')
-    segment_axis_names_q = nn.logical_to_mesh_axes((BATCH, "activation_length_q"))
-    segment_axis_names_kv = nn.logical_to_mesh_axes((BATCH, "activation_length_kv"))
+    
 
-    segment_axis_names = [{"q": segment_axis_names_q, "kv": segment_axis_names_kv}]
+    # segment_axis_names = [{"q": segment_axis_names_q, "kv": segment_axis_names_kv}]
 
     global_block_q = self.config.sa_block_q
     global_block_q_dkv = self.config.sa_block_q_dkv
@@ -316,12 +321,13 @@ class AttentionOp(nn.Module):
             axis_names_q,
             axis_names_kv,
             axis_names_kv,
-            segment_axis_names,
+            segment_axis_names_q,
+            segment_axis_names_kv,
         ),
         out_specs=axis_names_q,
         check_rep=False,
     )
-    def wrap_flash_attention(query, key, value, decoder_segment_ids):
+    def wrap_flash_attention(query, key, value, decoder_segment_ids_q, decoder_segment_ids_kv):
       # if decoder_segment_ids is not None:
       #   assert (
       #       query.shape[2] == decoder_segment_ids.q.shape[1]
@@ -359,13 +365,17 @@ class AttentionOp(nn.Module):
           attn_logits_soft_cap=attn_logits_soft_cap,
       )
 
-      return jax.vmap(splash_kernel)(query, key, value, segment_ids=decoder_segment_ids[0])
+      if decoder_segment_ids_q is not None:
+        decoder_segment_ids_tuple = splash_attention_kernel.SegmentIds(decoder_segment_ids_q, decoder_segment_ids_kv)
+      else:
+        decoder_segment_ids_tuple = None
+      return jax.vmap(splash_kernel)(query, key, value, segment_ids=decoder_segment_ids_tuple)
 
     devices_in_data_fsdp = self.mesh.shape["data"] * self.mesh.shape["fsdp"]
     assert (query.shape[0] / devices_in_data_fsdp).is_integer(), (
         "Batch dimension should be shardable among the devices in data and fsdp" " axis"
     )
-    x = wrap_flash_attention(query, key, value, [decoder_segment_ids])
+    x = wrap_flash_attention(query, key, value, decoder_segment_ids, decoder_segment_ids)
     x = jnp.transpose(x, axes=(0, 2, 1, 3))
     return x
 
