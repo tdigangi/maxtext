@@ -11,7 +11,18 @@ import argparse
 #### Configurations
 # Flags that go into MaxText
 MAXTEXT_CONFIG = dict(
-    tokenizer_path="assets/tokenizer",
+    # tokenizer_path="assets/tokenizer",
+    tokenizer_path="assets/tokenizer.llama2",
+    remat_policy="full",
+    ici_fsdp_parallelism=-1,
+    attention="flash",
+    reuse_example_batch=1,
+    use_iota_embed="true",
+    profiler="xplane",
+    sa_block_q=1024,
+    sa_block_q_dkv=2048,
+    sa_block_q_dq=2048,
+    gcs_metrics="true"
 )
 # Enables verbose TPU logging.
 TPU_VERBOSE_ENV_VARS = {
