@@ -1,7 +1,10 @@
 import ray
+
 from ray_tpu import RayTpuManager
 from ray.job_submission import JobSubmissionClient
 from trainer import MaxTextTrainer
+from pyconfig import HyperParameters
+from collections import OrderedDict
 
 import logging
 import os
@@ -11,8 +14,8 @@ import argparse
 #### Configurations
 # Flags that go into MaxText
 MAXTEXT_CONFIG = dict(
-    # tokenizer_path="assets/tokenizer",
-    tokenizer_path="assets/tokenizer.llama2",
+    tokenizer_path="assets/tokenizer",
+    # tokenizer_path="assets/tokenizer.llama2",
     remat_policy="full",
     ici_fsdp_parallelism=-1,
     attention="flash",
@@ -22,8 +25,10 @@ MAXTEXT_CONFIG = dict(
     sa_block_q=1024,
     sa_block_q_dkv=2048,
     sa_block_q_dq=2048,
-    gcs_metrics="true"
-)
+    gcs_metrics="true",
+    # dataset_name="c4/en:3.0.1"
+    )
+
 # Enables verbose TPU logging.
 TPU_VERBOSE_ENV_VARS = {
     "TPU_STDERR_LOG_LEVEL": "0",
@@ -51,7 +56,6 @@ def get_job_submission_id() -> str:
   current_job_id = ray.get_runtime_context().get_job_id()
   jobs = c.list_jobs()
   return [job.submission_id for job in jobs if job.job_id == current_job_id][0]
-
 
 def main(args: argparse.Namespace):
   ray.init(runtime_env=dict(worker_process_setup_hook=setup_loggers))
@@ -95,6 +99,10 @@ def main(args: argparse.Namespace):
   config["enable_checkpointing"] = args.enable_checkpointing
   if args.model_name is not None:
     config["model_name"] = args.model_name
+
+  for arg in args.dynamic_args:
+    key, value = arg.split("=")
+    config[key] = value
 
   env_vars = MACHINE_ENV_VARS
   if args.verbose_tpu:
@@ -148,5 +156,8 @@ if __name__ == "__main__":
   parser.add_argument("--model_name", action="store", default=None, help="The name of the model, if applicable.")
   parser.add_argument("--max_target_length", action="store", default=8192, help="The total number of steps to run.")
   parser.add_argument("--verbose_tpu", action="store_true", default=False, help="Whether or not to enable verbose TPU logs.")
+  parser.add_argument(
+      "dynamic_args", nargs=argparse.REMAINDER, help="Dynamic arguments to pass to MaxText config in the format key=value"
+  )
   args = parser.parse_args()
   main(args)
