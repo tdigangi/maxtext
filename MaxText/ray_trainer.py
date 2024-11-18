@@ -1,15 +1,11 @@
 import ray
-
-from ray_tpu import RayTpuManager
-from ray.job_submission import JobSubmissionClient
-from trainer import MaxTextTrainer
-from pyconfig import HyperParameters
-from collections import OrderedDict
-
 import logging
 import os
 import argparse
 
+from ray_tpu import RayTpuManager
+from ray.job_submission import JobSubmissionClient
+from trainer import MaxTextTrainer
 
 #### Configurations
 # Flags that go into MaxText
